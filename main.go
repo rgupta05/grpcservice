@@ -60,16 +60,34 @@ func main() {
 
 	fmt.Println("Client------------------>", graphqlClient)
 	queryTemplate := `
-	query {
-		searchTransactionsForward(query: "receiver:eosio action:newaccount", limit: 10, cursor: "") {
-		  
-		  cursor
-		  
+	query ($search: String!, $cursor: String, $low: Int64, $high: Int64) {
+		searchTransactionsForward(query: $search, lowBlockNum: $low, highBlockNum: $high, limit: 10, cursor: $cursor) {
+		  results {
+			undo
+			cursor
+			trace {
+			  block {
+				num
+				id
+				confirmed
+				timestamp
+				previous
+			  }
+			  id
+			  matchingActions {
+				account
+				name
+				json
+				seq
+				receiver
+			  }
+			}
+		  }
 		}
-		}
+	  }
 `
-	query := "receiver:eosio action:newaccount"
-	vars := toVariable(query, "", 10)
+	search := "receiver:eosio action:newaccount"
+	vars := toVariable(search, "", 10)
 
 	executionClient, err := graphqlClient.Execute(ctx, &graphql.Request{Query: queryTemplate, Variables: vars})
 	if err != nil {
