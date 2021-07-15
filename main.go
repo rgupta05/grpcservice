@@ -48,7 +48,7 @@ func main() {
 		grpc.WithPerRPCCredentials(credential),
 	}
 
-	connection, err := grpc.Dial("kylin.eos.dfuse.io:443", opts...)
+	connection, err := grpc.Dial("testnet.eos.dfuse.io:443", opts...)
 	if err != nil {
 		fmt.Errorf("run: grapheos connection connection: %s", err)
 	}
@@ -60,23 +60,16 @@ func main() {
 
 	fmt.Println("Client------------------>", graphqlClient)
 	queryTemplate := `
-	subscription ($search: String!, $cursor: String, $lowBlockNum: Int64) {
-	  searchTransactionsForward(query: $search, cursor: $cursor, lowBlockNum: $lowBlockNum) {
-		cursor
-		undo
-		trace {
-		  matchingActions {
-			receiver
-			account
-			name
-			json
-		  }
+	query {
+		searchTransactionsForward(query: "receiver:eosio action:newaccount", limit: 10, cursor: "") {
+		  
+		  cursor
+		  
 		}
-	  }
-	}
+		}
 `
-	search := "account:eosio.msig action:propose"
-	vars := toVariable(search, "", -1)
+	query := "receiver:eosio action:newaccount"
+	vars := toVariable(query, "", 10)
 
 	executionClient, err := graphqlClient.Execute(ctx, &graphql.Request{Query: queryTemplate, Variables: vars})
 	if err != nil {
