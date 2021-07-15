@@ -60,27 +60,24 @@ func main() {
 
 	fmt.Println("Client------------------>", graphqlClient)
 	queryTemplate := `
-	query ($search: String!, $cursor: String, $low: Int64, $high: Int64) {
-		searchTransactionsForward(query: $search, lowBlockNum: $low, highBlockNum: $high, limit: 10, cursor: $cursor) {
-		  results {
-			undo
-			cursor
-			trace {
-			  block {
-				num
-				id
-				confirmed
-				timestamp
-				previous
-			  }
+	subscription ($search: String!, $cursor: String) {
+		searchTransactionsBackward(query: $search, lowBlockNum: 1, limit: 10, cursor: $cursor) {
+		  cursor
+		  trace {
+			block {
+			  num
 			  id
-			  matchingActions {
-				account
-				name
-				json
-				seq
-				receiver
-			  }
+			  confirmed
+			  timestamp
+			  previous
+			}
+			id
+			matchingActions {
+			  account
+			  name
+			  json
+			  seq
+			  receiver
 			}
 		  }
 		}
