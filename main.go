@@ -47,7 +47,6 @@ func main() {
 		grpc.WithTransportCredentials(creds),
 		grpc.WithPerRPCCredentials(credential),
 	}
-
 	connection, err := grpc.Dial("eos.dfuse.eosnation.io:9000", opts...)
 	if err != nil {
 		fmt.Errorf("run: grapheos connection connection: %s", err)
@@ -61,8 +60,8 @@ func main() {
 	fmt.Println("Client------------------>", graphqlClient)
 
 	queryTemplate := `
-	subscription ($query: String!, $cursor: String, $lowBlockNum: Int64) {
-		searchTransactionsForward(query: $query, lowBlockNum: $lowBlockNum, limit: 0, cursor: $cursor) {
+	subscription ($search: String!, $cursor: String) {
+		searchTransactionsForward(query: $search, lowBlockNum:	182190106, limit: 10, cursor: $cursor) {
 		  undo
 		  cursor
 		  trace {
@@ -78,14 +77,19 @@ func main() {
 		  }
 		}
 	  }
+	  
+	  
 	  `
 
-	query := "receiver:hodldexeos11 -action:orasetrate"
+	search := "receiver:hodldexeos11 -action:orasetrate"
 	cursor := ""
-	fmt.Println(query)
-	vars := toVariable(query, cursor, 182190106)
+	fmt.Println(search)
+	vars := toVariable(search, cursor, 0)
 
 	executionClient, err := graphqlClient.Execute(ctx, &graphql.Request{Query: queryTemplate, Variables: vars})
+
+	fmt.Println("Execution Client------------------>", executionClient)
+
 	if err != nil {
 		fmt.Errorf("run: grapheos exec: %s", err)
 	}
@@ -179,9 +183,9 @@ func (s *Server) fetchToken() (*JWT, string, error) {
 
 func (s *Server) postFetchToken() (body []byte, err error) {
 
-	payload := `{"api_key":"server_9f32c26df033e345bed61c12ae641720"}`
+	payload := `{"api_key":"f25867d1c14a5ca649dcbbd4ad12cc2f"}`
 
-	httpResp, err := http.Post("https://auth.dfuse.io/v1/auth/issue", "application/json", bytes.NewBuffer([]byte(payload)))
+	httpResp, err := http.Post("https://auth.eosnation.io/v1/auth/issue", "application/json", bytes.NewBuffer([]byte(payload)))
 	if err != nil {
 		return nil, fmt.Errorf("request creation: %s", err)
 	}
