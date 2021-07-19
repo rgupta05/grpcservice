@@ -7,6 +7,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"grpcservice/database"
+	"grpcservice/models"
 	"grpcservice/pb/graphql"
 	"io"
 	"io/ioutil"
@@ -21,6 +23,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/oauth"
 	"google.golang.org/protobuf/types/known/structpb"
+	"gorm.io/datatypes"
 )
 
 type JWT map[string]interface{}
@@ -33,13 +36,21 @@ type Server struct {
 func main() {
 
 	var s Server
+	var inlineJson = ""
 
-	authToken, err := s.RefreshToken()
-	if err != nil {
-		fmt.Errorf("run: %s", err)
+	database.Connection()
+
+	// authToken, err := s.RefreshToken()
+	// if err != nil {
+	// 	fmt.Errorf("run: %s", err)
+	// }
+
+	s.oauth2Token = &oauth2.Token{
+		AccessToken: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiaHR0cHM6Ly9kZnVzZS5lb3NuYXRpb24uaW8vIl0sImV4cCI6MTYyNjc4NjQ2NCwiaWF0IjoxNjI2NzAwMDY0LCJpc3MiOiJodHRwczovL2F1dGguZW9zbmF0aW9uLmlvL3YxLyIsInN1YiI6InVpZDo4ODMiLCJxdW90YSI6MTIwLCJyYXRlIjoxMH0.VyiPJGQ9Qz-LJkbbtixJ5D1spFtE2UzJLKmCEPy_B_8",
+		TokenType:   "Bearer",
 	}
 
-	credential := oauth.NewOauthAccess(authToken)
+	credential := oauth.NewOauthAccess(s.oauth2Token)
 	pool, _ := x509.SystemCertPool()
 	// error handling omitted
 	creds := credentials.NewClientTLSFromCert(pool, "")
@@ -47,6 +58,7 @@ func main() {
 		grpc.WithTransportCredentials(creds),
 		grpc.WithPerRPCCredentials(credential),
 	}
+
 	connection, err := grpc.Dial("eos.dfuse.eosnation.io:9000", opts...)
 	if err != nil {
 		fmt.Errorf("run: grapheos connection connection: %s", err)
@@ -61,12 +73,13 @@ func main() {
 
 	queryTemplate := `
 	subscription ($search: String!, $cursor: String) {
-		searchTransactionsForward(query: $search, lowBlockNum:	182190106, limit: 10, cursor: $cursor) {
+		searchTransactionsForward(query: $search, lowBlockNum:	182190106, limit: 0, cursor: $cursor) {
 		  undo
 		  cursor
 		  trace {
 			block {
 			  num
+			  timestamp
 			}
 			matchingActions {
 			  account
@@ -121,8 +134,49 @@ func main() {
 		}
 
 		cursor := gjson.Get(response.Data, "searchTransactionsForward.cursor").Str
+		block := gjson.Get(response.Data, "searchTransactionsForward.trace.block").Get("num")
+		timestamp := gjson.Get(response.Data, "searchTransactionsForward.trace.block").Get("timestamp")
+		account := gjson.Get(response.Data, "searchTransactionsForward.trace.matchingActions.0.account").Str
+		name := gjson.Get(response.Data, "searchTransactionsForward.trace.matchingActions.0.name").Str
+		receiver := gjson.Get(response.Data, "searchTransactionsForward.trace.matchingActions.0.receiver").Str
+		primaryJson := gjson.Get(response.Data, "searchTransactionsForward.trace.matchingActions.0").Get("json").Raw
+		len := gjson.Get(response.Data, "searchTransactionsForward.trace.matchingActions.#").Int()
+
+		fmt.Println("Len:", len)
+
+		for i := 1; i <= int(len-1); i++ {
+			inlineaction := gjson.Get(response.Data, "searchTransactionsForward.trace.matchingActions."+fmt.Sprint(i)).Raw
+			if i == 1 {
+				inlineJson = "[" + inlineJson + inlineaction
+			} else {
+				inlineJson = inlineJson + "," + inlineaction
+			}
+			if i == int(len-1) {
+				inlineJson = inlineJson + "]"
+			}
+		}
 		fmt.Println("Cursor:", cursor)
+		fmt.Println("trace:", block)
+		fmt.Println("account:", account)
+		fmt.Println("name:", name)
+		fmt.Println("primary json:", primaryJson)
 		//	s.storage.StoreCursor(cursor)
+		actions := models.Cursor{
+			Cursor:            cursor,
+			BlockNum:          block.Int(),
+			Timestamp:         timestamp.Time(),
+			Account:           account,
+			Action:            name,
+			Receiver:          receiver,
+			PrimaryActionJSON: datatypes.JSON(primaryJson),
+			InlineActions:     datatypes.JSON([]byte(inlineJson)),
+		}
+
+		inlineJson = ""
+
+		fmt.Println(actions.InlineActions)
+		//insert into the database
+		database.DB.Create(&actions)
 
 	}
 
