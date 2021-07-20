@@ -46,7 +46,7 @@ func main() {
 	// }
 
 	s.oauth2Token = &oauth2.Token{
-		AccessToken: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiaHR0cHM6Ly9kZnVzZS5lb3NuYXRpb24uaW8vIl0sImV4cCI6MTYyNjc4NjQ2NCwiaWF0IjoxNjI2NzAwMDY0LCJpc3MiOiJodHRwczovL2F1dGguZW9zbmF0aW9uLmlvL3YxLyIsInN1YiI6InVpZDo4ODMiLCJxdW90YSI6MTIwLCJyYXRlIjoxMH0.VyiPJGQ9Qz-LJkbbtixJ5D1spFtE2UzJLKmCEPy_B_8",
+		AccessToken: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiaHR0cHM6Ly9kZnVzZS5lb3NuYXRpb24uaW8vIl0sImV4cCI6MTYyNjg4NTEwNiwiaWF0IjoxNjI2Nzk4NzA2LCJpc3MiOiJodHRwczovL2F1dGguZW9zbmF0aW9uLmlvL3YxLyIsInN1YiI6InVpZDo4ODMiLCJxdW90YSI6MTIwLCJyYXRlIjoxMH0.Dzz1yzibQetfRBvvch_WoSR-U-IWs7mJ1OuGN5CX0HE",
 		TokenType:   "Bearer",
 	}
 
