@@ -162,14 +162,14 @@ func main() {
 		fmt.Println("primary json:", primaryJson)
 		//	s.storage.StoreCursor(cursor)
 		actions := models.Cursor{
-			Cursor:            cursor,
-			BlockNum:          block.Int(),
-			Timestamp:         timestamp.Time(),
-			Account:           account,
-			Action:            name,
-			Receiver:          receiver,
-			PrimaryActionJSON: datatypes.JSON(primaryJson),
-			InlineActions:     datatypes.JSON([]byte(inlineJson)),
+			Cursorid:      cursor,
+			BlockNum:      block.Int(),
+			Timestamp:     timestamp.Time(),
+			Account:       account,
+			Action:        name,
+			Receiver:      receiver,
+			Data_json:     datatypes.JSON(primaryJson),
+			InlineActions: datatypes.JSON([]byte(inlineJson)),
 		}
 
 		inlineJson = ""
