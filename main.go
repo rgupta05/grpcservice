@@ -12,6 +12,7 @@ import (
 	"grpcservice/pb/graphql"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"regexp"
 	"strings"
@@ -40,13 +41,13 @@ func main() {
 
 	database.Connection()
 
-	// authToken, err := s.RefreshToken()
-	// if err != nil {
-	// 	fmt.Errorf("run: %s", err)
-	// }
+	authToken, err := s.RefreshToken()
+	if err != nil {
+		fmt.Errorf("run: %s", err)
+	}
 
 	s.oauth2Token = &oauth2.Token{
-		AccessToken: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiaHR0cHM6Ly9kZnVzZS5lb3NuYXRpb24uaW8vIl0sImV4cCI6MTYyNjg4NTEwNiwiaWF0IjoxNjI2Nzk4NzA2LCJpc3MiOiJodHRwczovL2F1dGguZW9zbmF0aW9uLmlvL3YxLyIsInN1YiI6InVpZDo4ODMiLCJxdW90YSI6MTIwLCJyYXRlIjoxMH0.Dzz1yzibQetfRBvvch_WoSR-U-IWs7mJ1OuGN5CX0HE",
+		AccessToken: authToken.AccessToken,
 		TokenType:   "Bearer",
 	}
 
@@ -73,7 +74,7 @@ func main() {
 
 	queryTemplate := `
 	subscription ($search: String!, $cursor: String) {
-		searchTransactionsForward(query: $search, lowBlockNum:	182190106, limit: 0, cursor: $cursor) {
+		searchTransactionsForward(query: $search, lowBlockNum: 195320067, limit: 0, cursor: $cursor) {
 		  undo
 		  cursor
 		  trace {
@@ -176,7 +177,10 @@ func main() {
 
 		fmt.Println(actions.InlineActions)
 		//insert into the database
-		database.DB.Create(&actions)
+		tx := database.DB.Create(&actions)
+		if tx.Error != nil {
+			log.Printf("Error for block num: %d %v", actions.BlockNum, tx.Error)
+		}
 
 	}
 
