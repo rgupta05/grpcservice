@@ -1,7 +1,6 @@
 package database
 
 import (
-	"grpcservice/models"
 	"log"
 
 	"gorm.io/driver/mysql"
@@ -24,6 +23,6 @@ func Connection() {
 
 	DB = connection
 
-	connection.AutoMigrate(&models.Cursor{})
+	//connection.AutoMigrate(&models.Cursor{})
 
 }

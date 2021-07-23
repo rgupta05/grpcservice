@@ -15,9 +15,12 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/gorilla/handlers"
+	"github.com/gorilla/mux"
 	"github.com/tidwall/gjson"
 	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
@@ -29,6 +32,8 @@ import (
 
 type JWT map[string]interface{}
 
+var s Server
+
 type Server struct {
 	jwt         *JWT
 	oauth2Token *oauth2.Token
@@ -36,12 +41,40 @@ type Server struct {
 
 func main() {
 
-	var s Server
-	var inlineJson = ""
-
 	database.Connection()
 
-	authToken, err := s.RefreshToken()
+	router := mux.NewRouter().StrictSlash(true)
+
+	router.HandleFunc("/streamdata", StreamData).Methods("GET")
+
+	headersOk := handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "application/json;charset=UTF-8"})
+	originsOk := handlers.AllowedOrigins([]string{"*"})
+	methodsOk := handlers.AllowedMethods([]string{"GET", "HEAD", "POST", "PUT", "OPTIONS"})
+
+	fmt.Println("Listening on :8100...")
+	srv := &http.Server{
+		Handler:      handlers.CORS(originsOk, headersOk, methodsOk)(router),
+		Addr:         ":8100",
+		WriteTimeout: 300 * time.Second,
+		ReadTimeout:  300 * time.Second,
+	}
+
+	err := srv.ListenAndServe()
+	if err != nil {
+		fmt.Println("Error launching server: ", err)
+	}
+}
+
+func StreamData(w http.ResponseWriter, req *http.Request) {
+
+	var inlineJson = ""
+	var queryTemplate string
+
+	lowBlockNum := req.URL.Query().Get("blocknum")
+	limitBlock := req.URL.Query().Get("limit")
+	fmt.Println("blockNum:", lowBlockNum, "limit:", limitBlock)
+
+	authToken, err := RefreshToken()
 	if err != nil {
 		fmt.Errorf("run: %s", err)
 	}
@@ -65,16 +98,17 @@ func main() {
 		fmt.Errorf("run: grapheos connection connection: %s", err)
 	}
 
-	fmt.Println(connection)
+	fmt.Println("Connection:", connection)
 
 	ctx := context.Background()
 	graphqlClient := graphql.NewGraphQLClient(connection)
 
 	fmt.Println("Client------------------>", graphqlClient)
 
-	queryTemplate := `
+	if lowBlockNum == "" && limitBlock == "" {
+		queryTemplate = `
 	subscription ($search: String!, $cursor: String) {
-		searchTransactionsForward(query: $search, lowBlockNum: 195320067, limit: 0, cursor: $cursor) {
+		searchTransactionsForward(query: $search, lowBlockNum: 195150924, limit: 10, cursor: $cursor) {
 		  undo
 		  cursor
 		  trace {
@@ -92,13 +126,38 @@ func main() {
 		}
 	  }
 	  
+	  `
+	} else {
+		queryTemplate = `
+	subscription ($search: String!, $cursor: String,$limit: Int64,$lowBlockNum: Int64) {
+		searchTransactionsForward(query: $search, lowBlockNum: $lowBlockNum, limit: $limit, cursor: $cursor) {
+		  undo
+		  cursor
+		  trace {
+			block {
+			  num
+			  timestamp
+			}
+			matchingActions {
+			  account
+			  name
+			  json
+			  receiver
+			}
+		  }
+		}
+	  }
 	  
 	  `
+
+	}
 
 	search := "receiver:hodldexeos11 -action:orasetrate"
 	cursor := ""
 	fmt.Println(search)
-	vars := toVariable(search, cursor, 0)
+	low, _ := strconv.Atoi(lowBlockNum)
+	limit, _ := strconv.Atoi(limitBlock)
+	vars := toVariable(search, cursor, int64(low), int64(limit))
 
 	executionClient, err := graphqlClient.Execute(ctx, &graphql.Request{Query: queryTemplate, Variables: vars})
 
@@ -162,6 +221,7 @@ func main() {
 		fmt.Println("name:", name)
 		fmt.Println("primary json:", primaryJson)
 		//	s.storage.StoreCursor(cursor)
+
 		actions := models.Cursor{
 			Cursorid:      cursor,
 			BlockNum:      block.Int(),
@@ -179,27 +239,28 @@ func main() {
 		//insert into the database
 		tx := database.DB.Create(&actions)
 		if tx.Error != nil {
-			log.Printf("Error for block num: %d %v", actions.BlockNum, tx.Error)
+			log.Printf("Error for block num: %d %v %v", actions.BlockNum, actions.Cursorid, tx.Error)
 		}
 
 	}
 
 }
 
-func (s *Server) RefreshToken() (*oauth2.Token, error) {
-	fmt.Println(s.jwt)
+func RefreshToken() (*oauth2.Token, error) {
+
 	if s.jwt != nil && !s.jwt.NeedRefresh() {
 		fmt.Println("Reusing token")
 		return s.oauth2Token, nil
 	}
 
 	fmt.Println("Getting new token")
-	jwt, token, err := s.fetchToken()
+	jwt, token, err := fetchToken()
 	if err != nil {
 		return nil, fmt.Errorf("refresh token: %s", err)
 	}
 
 	s.jwt = jwt
+
 	s.oauth2Token = &oauth2.Token{
 		AccessToken: token,
 		TokenType:   "Bearer",
@@ -210,9 +271,9 @@ func (s *Server) RefreshToken() (*oauth2.Token, error) {
 	return s.oauth2Token, nil
 }
 
-func (s *Server) fetchToken() (*JWT, string, error) {
+func fetchToken() (*JWT, string, error) {
 
-	jsonData, err := s.postFetchToken()
+	jsonData, err := postFetchToken()
 
 	if err != nil {
 		return nil, "", fmt.Errorf("http fetch: %s", err)
@@ -239,7 +300,7 @@ func (s *Server) fetchToken() (*JWT, string, error) {
 	return jwt, resp.Token, nil
 }
 
-func (s *Server) postFetchToken() (body []byte, err error) {
+func postFetchToken() (body []byte, err error) {
 
 	payload := `{"api_key":"f25867d1c14a5ca649dcbbd4ad12cc2f"}`
 
@@ -310,7 +371,7 @@ func ParseJwt(token string) (*JWT, error) {
 
 }
 
-func toVariable(query string, cursor string, lowBlockNum int32) *structpb.Struct {
+func toVariable(query string, cursor string, lowBlockNum int64, limit int64) *structpb.Struct {
 	return &structpb.Struct{
 		Fields: map[string]*structpb.Value{
 			"search": {
@@ -326,6 +387,11 @@ func toVariable(query string, cursor string, lowBlockNum int32) *structpb.Struct
 			"lowBlockNum": {
 				Kind: &structpb.Value_NumberValue{
 					NumberValue: float64(lowBlockNum),
+				},
+			},
+			"limit": {
+				Kind: &structpb.Value_NumberValue{
+					NumberValue: float64(limit),
 				},
 			},
 		},
