@@ -85,7 +85,8 @@ func StreamData() {
 
 	authToken, err := RefreshToken()
 	if err != nil {
-		fmt.Errorf("run: %s", err)
+		errResult := fmt.Errorf("run: %s", err)
+		log.Println(errResult)
 	}
 
 	s.oauth2Token = &oauth2.Token{
@@ -104,7 +105,8 @@ func StreamData() {
 
 	connection, err := grpc.Dial("eos.dfuse.eosnation.io:9000", opts...)
 	if err != nil {
-		fmt.Errorf("run: grapheos connection connection: %s", err)
+		errResult := fmt.Errorf("run: grapheos connection connection: %s", err)
+		log.Println(errResult)
 	}
 
 	fmt.Println("Connection:", connection)
@@ -178,7 +180,8 @@ func StreamData() {
 	fmt.Println("Execution Client------------------>", executionClient)
 
 	if err != nil {
-		fmt.Errorf("run: grapheos exec: %s", err)
+		errResult := fmt.Errorf("run: grapheos exec: %s", err)
+		log.Println(errResult)
 	} else if executionClient == nil {
 
 		// resp.Code = 500
@@ -200,7 +203,8 @@ func StreamData() {
 		if err != nil {
 			fmt.Println(err)
 			if err != io.EOF {
-				fmt.Errorf("receiving message from search stream client: %s", err)
+				errResult := fmt.Errorf("receiving message from search stream client: %s", err)
+				log.Println(errResult)
 				// resp.Code = 500
 				// resp.Message = fmt.Sprintf("receiving message from search stream client: %s", err)
 				// result_json, _ := json.Marshal(resp)
