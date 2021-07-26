@@ -46,7 +46,7 @@ func main() {
 
 	router := mux.NewRouter().StrictSlash(true)
 
-	router.HandleFunc("/streamdata", index).Methods("GET")
+	router.HandleFunc("/continue-stream", index).Methods("GET")
 
 	headersOk := handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "application/json;charset=UTF-8"})
 	originsOk := handlers.AllowedOrigins([]string{"*"})
