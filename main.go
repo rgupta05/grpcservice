@@ -52,10 +52,10 @@ func main() {
 	originsOk := handlers.AllowedOrigins([]string{"*"})
 	methodsOk := handlers.AllowedMethods([]string{"GET", "HEAD", "POST", "PUT", "OPTIONS"})
 
-	fmt.Println("Listening on :8100...")
+	fmt.Println("Listening on :80...")
 	srv := &http.Server{
 		Handler:      handlers.CORS(originsOk, headersOk, methodsOk)(router),
-		Addr:         ":8100",
+		Addr:         ":80",
 		WriteTimeout: 300 * time.Second,
 		ReadTimeout:  300 * time.Second,
 	}
@@ -67,7 +67,12 @@ func main() {
 }
 
 func index(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusAccepted)
+	w.Header().Set("Content-Type", "application/json")
+	resp := models.Response{
+		Code:    200,
+		Message: "Stream Started",
+	}
+	json.NewEncoder(w).Encode(resp)
 	go StreamData()
 }
 
