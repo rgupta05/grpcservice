@@ -46,7 +46,7 @@ func main() {
 
 	router := mux.NewRouter().StrictSlash(true)
 
-	router.HandleFunc("/streamdata", StreamData).Methods("GET")
+	router.HandleFunc("/streamdata", index).Methods("GET")
 
 	headersOk := handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "application/json;charset=UTF-8"})
 	originsOk := handlers.AllowedOrigins([]string{"*"})
@@ -66,17 +66,22 @@ func main() {
 	}
 }
 
-func StreamData(w http.ResponseWriter, req *http.Request) {
+func index(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusAccepted)
+	go StreamData()
+}
+
+func StreamData() {
 
 	var inlineJson = ""
 	var queryTemplate string
 	var lastCursor models.Cursor
-	var resp models.Response
+	//var resp models.Response
 	var count = 0
 
-	lowBlockNum := req.URL.Query().Get("blocknum")
-	limitBlock := req.URL.Query().Get("limit")
-	fmt.Println("blockNum:", lowBlockNum, "limit:", limitBlock)
+	// lowBlockNum := req.URL.Query().Get("blocknum")
+	// limitBlock := req.URL.Query().Get("limit")
+	// fmt.Println("blockNum:", lowBlockNum, "limit:", limitBlock)
 
 	authToken, err := RefreshToken()
 	if err != nil {
@@ -109,10 +114,10 @@ func StreamData(w http.ResponseWriter, req *http.Request) {
 
 	fmt.Println("Client------------------>", graphqlClient)
 
-	if lowBlockNum == "" && limitBlock == "" {
-		queryTemplate = `
+	//if lowBlockNum == "" && limitBlock == "" {
+	queryTemplate = `
 	subscription ($search: String!, $cursor: String,$lowBlockNum: Int64) {
-		searchTransactionsForward(query: $search, lowBlockNum: $lowBlockNum, limit: 10, cursor: $cursor) {
+		searchTransactionsForward(query: $search, lowBlockNum: $lowBlockNum, limit: 0, cursor: $cursor) {
 		  undo
 		  cursor
 		  trace {
@@ -132,41 +137,41 @@ func StreamData(w http.ResponseWriter, req *http.Request) {
 	  
 	  `
 
-		database.DB.Select("cursorid", "block_num", "account", "action", "receiver", "inline_actions", "data_json", "timestamp").Last(&lastCursor)
-		lowBlockNum = fmt.Sprint(lastCursor.BlockNum)
-		fmt.Println("LAST INSERTED BLOCK NUM ::::::::", lowBlockNum)
+	database.DB.Select("cursorid", "block_num", "account", "action", "receiver", "inline_actions", "data_json", "timestamp").Last(&lastCursor)
+	lowBlockNum := fmt.Sprint(lastCursor.BlockNum)
+	fmt.Println("LAST INSERTED BLOCK NUM ::::::::", lowBlockNum)
 
-	} else {
-		queryTemplate = `
-	subscription ($search: String!, $cursor: String,$limit: Int64,$lowBlockNum: Int64) {
-		searchTransactionsForward(query: $search, lowBlockNum: $lowBlockNum, limit: $limit, cursor: $cursor) {
-		  undo
-		  cursor
-		  trace {
-			block {
-			  num
-			  timestamp
-			}
-			matchingActions {
-			  account
-			  name
-			  json
-			  receiver
-			}
-		  }
-		}
-	  }
-	  
-	  `
+	// } else {
+	// 	queryTemplate = `
+	// subscription ($search: String!, $cursor: String,$limit: Int64,$lowBlockNum: Int64) {
+	// 	searchTransactionsForward(query: $search, lowBlockNum: $lowBlockNum, limit: $limit, cursor: $cursor) {
+	// 	  undo
+	// 	  cursor
+	// 	  trace {
+	// 		block {
+	// 		  num
+	// 		  timestamp
+	// 		}
+	// 		matchingActions {
+	// 		  account
+	// 		  name
+	// 		  json
+	// 		  receiver
+	// 		}
+	// 	  }
+	// 	}
+	//   }
 
-	}
+	//   `
+
+	// }
 
 	search := "receiver:hodldexeos11 -action:orasetrate"
 	cursor := ""
 	fmt.Println(search)
 	low, _ := strconv.Atoi(lowBlockNum)
-	limit, _ := strconv.Atoi(limitBlock)
-	vars := toVariable(search, cursor, int64(low), int64(limit))
+	//limit, _ := strconv.Atoi(limitBlock)
+	vars := toVariable(search, cursor, int64(low), 0)
 
 	executionClient, err := graphqlClient.Execute(ctx, &graphql.Request{Query: queryTemplate, Variables: vars})
 
@@ -176,10 +181,11 @@ func StreamData(w http.ResponseWriter, req *http.Request) {
 		fmt.Errorf("run: grapheos exec: %s", err)
 	} else if executionClient == nil {
 
-		resp.Code = 500
-		resp.Message = fmt.Sprintf("Error in graphql client execute: %s", err)
-		result_json, _ := json.Marshal(resp)
-		io.WriteString(w, string(result_json))
+		// resp.Code = 500
+		// resp.Message = fmt.Sprintf("Error in graphql client execute: %s", err)
+		// result_json, _ := json.Marshal(resp)
+		// io.WriteString(w, string(result_json))
+		log.Println("Erorr in getting execution client")
 		return
 
 	}
@@ -195,18 +201,18 @@ func StreamData(w http.ResponseWriter, req *http.Request) {
 			fmt.Println(err)
 			if err != io.EOF {
 				fmt.Errorf("receiving message from search stream client: %s", err)
-				resp.Code = 500
-				resp.Message = fmt.Sprintf("receiving message from search stream client: %s", err)
-				result_json, _ := json.Marshal(resp)
-				io.WriteString(w, string(result_json))
-				return
+				// resp.Code = 500
+				// resp.Message = fmt.Sprintf("receiving message from search stream client: %s", err)
+				// result_json, _ := json.Marshal(resp)
+				// io.WriteString(w, string(result_json))
+				break
 			}
 			fmt.Println("No more result available")
-			resp.Code = 200
-			resp.Message = "Inserted " + fmt.Sprint(count-1) + " records in DB"
-			result_json, _ := json.Marshal(resp)
-			io.WriteString(w, string(result_json))
-			return
+			// resp.Code = 200
+			// resp.Message = "Inserted " + fmt.Sprint(count-1) + " records in DB"
+			// result_json, _ := json.Marshal(resp)
+			// io.WriteString(w, string(result_json))
+			break
 		}
 		fmt.Println("Received response:", response.Data)
 
