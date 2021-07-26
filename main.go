@@ -107,8 +107,8 @@ func StreamData(w http.ResponseWriter, req *http.Request) {
 
 	if lowBlockNum == "" && limitBlock == "" {
 		queryTemplate = `
-	subscription ($search: String!, $cursor: String) {
-		searchTransactionsForward(query: $search, lowBlockNum: 195150924, limit: 10, cursor: $cursor) {
+	subscription ($search: String!, $cursor: String,$lowBlockNum: Int64) {
+		searchTransactionsForward(query: $search, lowBlockNum: $lowBlockNum, limit: 10, cursor: $cursor) {
 		  undo
 		  cursor
 		  trace {
@@ -127,6 +127,10 @@ func StreamData(w http.ResponseWriter, req *http.Request) {
 	  }
 	  
 	  `
+		var lastCursor models.Cursor
+		database.DB.Last(&lastCursor)
+		lowBlockNum = fmt.Sprint(lastCursor.BlockNum)
+
 	} else {
 		queryTemplate = `
 	subscription ($search: String!, $cursor: String,$limit: Int64,$lowBlockNum: Int64) {
