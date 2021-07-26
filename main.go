@@ -14,6 +14,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -69,6 +70,9 @@ func StreamData(w http.ResponseWriter, req *http.Request) {
 
 	var inlineJson = ""
 	var queryTemplate string
+	var lastCursor models.Cursor
+	var resp models.Response
+	var count = 0
 
 	lowBlockNum := req.URL.Query().Get("blocknum")
 	limitBlock := req.URL.Query().Get("limit")
@@ -124,12 +128,13 @@ func StreamData(w http.ResponseWriter, req *http.Request) {
 			}
 		  }
 		}
-	  }
+	  } 
 	  
 	  `
-		var lastCursor models.Cursor
-		database.DB.Last(&lastCursor)
+
+		database.DB.Select("cursorid", "block_num", "account", "action", "receiver", "inline_actions", "data_json", "timestamp").Last(&lastCursor)
 		lowBlockNum = fmt.Sprint(lastCursor.BlockNum)
+		fmt.Println("LAST INSERTED BLOCK NUM ::::::::", lowBlockNum)
 
 	} else {
 		queryTemplate = `
@@ -169,10 +174,19 @@ func StreamData(w http.ResponseWriter, req *http.Request) {
 
 	if err != nil {
 		fmt.Errorf("run: grapheos exec: %s", err)
+	} else if executionClient == nil {
+
+		resp.Code = 500
+		resp.Message = fmt.Sprintf("Error in graphql client execute: %s", err)
+		result_json, _ := json.Marshal(resp)
+		io.WriteString(w, string(result_json))
+		return
+
 	}
 
 	for {
 		fmt.Println("Waiting for response")
+		count += 1
 		response, err := executionClient.Recv()
 
 		fmt.Println("Response -----> ", response)
@@ -181,9 +195,18 @@ func StreamData(w http.ResponseWriter, req *http.Request) {
 			fmt.Println(err)
 			if err != io.EOF {
 				fmt.Errorf("receiving message from search stream client: %s", err)
+				resp.Code = 500
+				resp.Message = fmt.Sprintf("receiving message from search stream client: %s", err)
+				result_json, _ := json.Marshal(resp)
+				io.WriteString(w, string(result_json))
+				return
 			}
 			fmt.Println("No more result available")
-			break
+			resp.Code = 200
+			resp.Message = "Inserted " + fmt.Sprint(count-1) + " records in DB"
+			result_json, _ := json.Marshal(resp)
+			io.WriteString(w, string(result_json))
+			return
 		}
 		fmt.Println("Received response:", response.Data)
 
@@ -241,8 +264,17 @@ func StreamData(w http.ResponseWriter, req *http.Request) {
 
 		fmt.Println(actions.InlineActions)
 		//insert into the database
+		equality := reflect.DeepEqual(lastCursor, actions)
+		fmt.Println("EQUALITY---------------------->", equality)
+		fmt.Println(lastCursor)
+		fmt.Println(actions)
+		if count == 1 && !reflect.DeepEqual(lastCursor, actions) && lastCursor.Cursorid != "" {
+			database.DB.Model(&actions).Where("block_num=?", actions.BlockNum).Updates(map[string]interface{}{"account": actions.Account, "action": actions.Action, "receiver": actions.Receiver, "inline_actions": actions.InlineActions, "data_json": actions.Data_json})
+			continue
+		}
 		tx := database.DB.Create(&actions)
 		if tx.Error != nil {
+			count -= 1
 			log.Printf("Error for block num: %d %v %v", actions.BlockNum, actions.Cursorid, tx.Error)
 		}
 

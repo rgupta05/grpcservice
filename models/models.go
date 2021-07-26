@@ -17,3 +17,8 @@ type Cursor struct {
 	InlineActions datatypes.JSON
 	Timestamp     time.Time
 }
+
+type Response struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
