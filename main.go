@@ -83,7 +83,7 @@ func StreamData() {
 	var lastCursor models.Cursor
 	var count = 0
 
-	//infinite recursive call
+	//infinite recursive call to continue stream after stopping
 	defer StreamData()
 
 	authToken, err := RefreshToken()
