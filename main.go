@@ -82,7 +82,7 @@ func StreamData() {
 	var queryTemplate string
 	var lastCursor models.Cursor
 	var count = 0
-
+	//infinite recursive call
 	defer StreamData()
 
 	authToken, err := RefreshToken()
