@@ -82,6 +82,7 @@ func StreamData() {
 	var queryTemplate string
 	var lastCursor models.Cursor
 	var count = 0
+
 	//infinite recursive call
 	defer StreamData()
 
@@ -248,10 +249,12 @@ func StreamData() {
 			database.DB.Model(&actions).Where("block_num=?", actions.BlockNum).Updates(map[string]interface{}{"account": actions.Account, "action": actions.Action, "receiver": actions.Receiver, "inline_actions": actions.InlineActions, "data_json": actions.Data_json})
 			continue
 		}
-		tx := database.DB.Create(&actions)
-		if tx.Error != nil {
-			count -= 1
-			log.Printf("Error for block num: %d %v %v", actions.BlockNum, actions.Cursorid, tx.Error)
+		if actions.BlockNum != 0 {
+			tx := database.DB.Create(&actions)
+			if tx.Error != nil {
+				count -= 1
+				log.Printf("Error for block num: %d %v %v", actions.BlockNum, actions.Cursorid, tx.Error)
+			}
 		}
 
 	}
