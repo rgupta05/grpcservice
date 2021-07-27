@@ -83,6 +83,8 @@ func StreamData() {
 	var lastCursor models.Cursor
 	var count = 0
 
+	defer StreamData()
+
 	authToken, err := RefreshToken()
 	if err != nil {
 		errResult := fmt.Errorf("run: %s", err)
@@ -107,6 +109,7 @@ func StreamData() {
 	if err != nil {
 		errResult := fmt.Errorf("run: grapheos connection connection: %s", err)
 		log.Println(errResult)
+		return
 	}
 
 	fmt.Println("Connection:", connection)
@@ -156,12 +159,11 @@ func StreamData() {
 	if err != nil {
 		errResult := fmt.Errorf("run: grapheos exec: %s", err)
 		log.Println(errResult)
+		return
 	} else if executionClient == nil {
 		log.Println("Erorr in getting execution client")
 		return
 	}
-
-	defer StreamData()
 
 	for {
 		fmt.Println("Waiting for response")
