@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"grpcservice/database"
 	"grpcservice/models"
@@ -198,12 +199,16 @@ func StreamData() {
 
 	}
 
+	defer StreamData()
+
 	for {
 		fmt.Println("Waiting for response")
 		count += 1
 		response, err := executionClient.Recv()
 
 		fmt.Println("Response -----> ", response)
+
+		err = errors.New("rpc error: code = Unavailable desc = error reading from server: read tcp 192.168.0.3:61930->148.59.149.144:9000: wsarecv: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond.")
 
 		if err != nil {
 			fmt.Println(err)
