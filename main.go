@@ -6,7 +6,6 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"grpcservice/database"
 	"grpcservice/models"
@@ -82,12 +81,7 @@ func StreamData() {
 	var inlineJson = ""
 	var queryTemplate string
 	var lastCursor models.Cursor
-	//var resp models.Response
 	var count = 0
-
-	// lowBlockNum := req.URL.Query().Get("blocknum")
-	// limitBlock := req.URL.Query().Get("limit")
-	// fmt.Println("blockNum:", lowBlockNum, "limit:", limitBlock)
 
 	authToken, err := RefreshToken()
 	if err != nil {
@@ -122,7 +116,6 @@ func StreamData() {
 
 	fmt.Println("Client------------------>", graphqlClient)
 
-	//if lowBlockNum == "" && limitBlock == "" {
 	queryTemplate = `
 	subscription ($search: String!, $cursor: String,$lowBlockNum: Int64) {
 		searchTransactionsForward(query: $search, lowBlockNum: $lowBlockNum, limit: 0, cursor: $cursor) {
@@ -149,31 +142,6 @@ func StreamData() {
 	lowBlockNum := fmt.Sprint(lastCursor.BlockNum)
 	fmt.Println("LAST INSERTED BLOCK NUM ::::::::", lowBlockNum)
 
-	// } else {
-	// 	queryTemplate = `
-	// subscription ($search: String!, $cursor: String,$limit: Int64,$lowBlockNum: Int64) {
-	// 	searchTransactionsForward(query: $search, lowBlockNum: $lowBlockNum, limit: $limit, cursor: $cursor) {
-	// 	  undo
-	// 	  cursor
-	// 	  trace {
-	// 		block {
-	// 		  num
-	// 		  timestamp
-	// 		}
-	// 		matchingActions {
-	// 		  account
-	// 		  name
-	// 		  json
-	// 		  receiver
-	// 		}
-	// 	  }
-	// 	}
-	//   }
-
-	//   `
-
-	// }
-
 	search := "receiver:hodldexeos11 -action:orasetrate"
 	cursor := ""
 	fmt.Println(search)
@@ -189,14 +157,8 @@ func StreamData() {
 		errResult := fmt.Errorf("run: grapheos exec: %s", err)
 		log.Println(errResult)
 	} else if executionClient == nil {
-
-		// resp.Code = 500
-		// resp.Message = fmt.Sprintf("Error in graphql client execute: %s", err)
-		// result_json, _ := json.Marshal(resp)
-		// io.WriteString(w, string(result_json))
 		log.Println("Erorr in getting execution client")
 		return
-
 	}
 
 	defer StreamData()
@@ -208,24 +170,16 @@ func StreamData() {
 
 		fmt.Println("Response -----> ", response)
 
-		err = errors.New("rpc error: code = Unavailable desc = error reading from server: read tcp 192.168.0.3:61930->148.59.149.144:9000: wsarecv: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond.")
+		//err = errors.New("rpc error: code = Unavailable desc = error reading from server: read tcp 192.168.0.3:61930->148.59.149.144:9000: wsarecv: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond.")
 
 		if err != nil {
 			fmt.Println(err)
 			if err != io.EOF {
 				errResult := fmt.Errorf("receiving message from search stream client: %s", err)
 				log.Println(errResult)
-				// resp.Code = 500
-				// resp.Message = fmt.Sprintf("receiving message from search stream client: %s", err)
-				// result_json, _ := json.Marshal(resp)
-				// io.WriteString(w, string(result_json))
 				break
 			}
 			fmt.Println("No more result available")
-			// resp.Code = 200
-			// resp.Message = "Inserted " + fmt.Sprint(count-1) + " records in DB"
-			// result_json, _ := json.Marshal(resp)
-			// io.WriteString(w, string(result_json))
 			break
 		}
 		fmt.Println("Received response:", response.Data)
