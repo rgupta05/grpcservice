@@ -121,8 +121,8 @@ func StreamData() {
 	fmt.Println("Client------------------>", graphqlClient)
 
 	queryTemplate = `
-	subscription ($search: String!, $cursor: String,$lowBlockNum: Int64) {
-		searchTransactionsForward(query: $search, lowBlockNum: $lowBlockNum, limit: 0, cursor: $cursor) {
+	subscription ($search: String!, $cursor: String) {
+		searchTransactionsForward(query: $search, limit: 0, cursor: $cursor,irreversibleOnly:true) {
 		  undo
 		  cursor
 		  trace {
@@ -130,6 +130,8 @@ func StreamData() {
 			  num
 			  timestamp
 			}
+			id
+      		status
 			matchingActions {
 			  account
 			  name
@@ -144,10 +146,12 @@ func StreamData() {
 
 	database.DB.Select("cursorid", "block_num", "account", "action", "receiver", "inline_actions", "data_json", "timestamp").Last(&lastCursor)
 	lowBlockNum := fmt.Sprint(lastCursor.BlockNum)
+	lastSeenCursor := lastCursor.Cursorid
 	fmt.Println("LAST INSERTED BLOCK NUM ::::::::", lowBlockNum)
+	fmt.Println("LAST SEEN CURSOR  ID ::::::::", lastSeenCursor)
 
 	search := "receiver:hodldexeos11 -action:orasetrate"
-	cursor := ""
+	cursor := lastSeenCursor
 	fmt.Println(search)
 	low, _ := strconv.Atoi(lowBlockNum)
 	//limit, _ := strconv.Atoi(limitBlock)
@@ -198,6 +202,7 @@ func StreamData() {
 		}
 
 		cursor := gjson.Get(response.Data, "searchTransactionsForward.cursor").Str
+		undo := gjson.Get(response.Data, "searchTransactionsForward.undo").Bool()
 		block := gjson.Get(response.Data, "searchTransactionsForward.trace.block").Get("num")
 		timestamp := gjson.Get(response.Data, "searchTransactionsForward.trace.block").Get("timestamp")
 		account := gjson.Get(response.Data, "searchTransactionsForward.trace.matchingActions.0.account").Str
@@ -224,6 +229,7 @@ func StreamData() {
 		fmt.Println("account:", account)
 		fmt.Println("name:", name)
 		fmt.Println("primary json:", primaryJson)
+		fmt.Println("UNDO:", undo)
 		//	s.storage.StoreCursor(cursor)
 
 		actions := models.Cursor{
@@ -245,16 +251,25 @@ func StreamData() {
 		fmt.Println("EQUALITY---------------------->", equality)
 		fmt.Println(lastCursor)
 		fmt.Println(actions)
-		if count == 1 && !reflect.DeepEqual(lastCursor, actions) && lastCursor.Cursorid != "" {
-			database.DB.Model(&actions).Where("block_num=?", actions.BlockNum).Updates(map[string]interface{}{"account": actions.Account, "action": actions.Action, "receiver": actions.Receiver, "inline_actions": actions.InlineActions, "data_json": actions.Data_json})
+
+		if undo {
+			database.DB.Where("cursorid=?", actions.Cursorid).Delete(&actions)
+			fmt.Println("Deleted Record with cursor id: ", actions.Cursorid)
 			continue
 		}
+
+		// if count == 1 && !reflect.DeepEqual(lastCursor, actions) && lastCursor.Cursorid != "" {
+		// 	database.DB.Model(&actions).Where("block_num=?", actions.BlockNum).Updates(map[string]interface{}{"cursorid": actions.Cursorid, "account": actions.Account, "action": actions.Action, "receiver": actions.Receiver, "inline_actions": actions.InlineActions, "data_json": actions.Data_json})
+		// 	fmt.Printf("Updated Record with cursor id: %v , Block num: %v", actions.Cursorid, actions.BlockNum)
+		// 	continue
+		// }
 		if actions.BlockNum != 0 {
 			tx := database.DB.Create(&actions)
 			if tx.Error != nil {
 				count -= 1
 				log.Printf("Error for block num: %d %v %v", actions.BlockNum, actions.Cursorid, tx.Error)
 			}
+			fmt.Printf("Inserted Record with cursor id: %v , Block num: %v", actions.Cursorid, actions.BlockNum)
 		}
 
 	}
