@@ -127,6 +127,7 @@ func StreamData() {
 		  cursor
 		  trace {
 			block {
+			  id
 			  num
 			  timestamp
 			}
@@ -201,6 +202,8 @@ func StreamData() {
 
 		}
 
+		time.Sleep(5 * time.Second)
+
 		cursor := gjson.Get(response.Data, "searchTransactionsForward.cursor").Str
 		undo := gjson.Get(response.Data, "searchTransactionsForward.undo").Bool()
 		block := gjson.Get(response.Data, "searchTransactionsForward.trace.block").Get("num")
@@ -209,7 +212,10 @@ func StreamData() {
 		name := gjson.Get(response.Data, "searchTransactionsForward.trace.matchingActions.0.name").Str
 		receiver := gjson.Get(response.Data, "searchTransactionsForward.trace.matchingActions.0.receiver").Str
 		primaryJson := gjson.Get(response.Data, "searchTransactionsForward.trace.matchingActions.0").Get("json").Raw
+		status := gjson.Get(response.Data, "searchTransactionsForward.trace.status").Str
 		len := gjson.Get(response.Data, "searchTransactionsForward.trace.matchingActions.#").Int()
+		blockid := gjson.Get(response.Data, "searchTransactionsForward.trace.block").Get("id")
+		traceid := gjson.Get(response.Data, "searchTransactionsForward.trace.id").Str
 
 		fmt.Println("Len:", len)
 
@@ -230,6 +236,9 @@ func StreamData() {
 		fmt.Println("name:", name)
 		fmt.Println("primary json:", primaryJson)
 		fmt.Println("UNDO:", undo)
+		fmt.Println("STATUS:", status)
+		fmt.Println("BLOCK ID:", blockid)
+		fmt.Println("TRACE ID:", traceid)
 		//	s.storage.StoreCursor(cursor)
 
 		actions := models.Cursor{
@@ -263,13 +272,14 @@ func StreamData() {
 		// 	fmt.Printf("Updated Record with cursor id: %v , Block num: %v", actions.Cursorid, actions.BlockNum)
 		// 	continue
 		// }
-		if actions.BlockNum != 0 {
+		if actions.BlockNum != 0 && status == "EXECUTED" {
 			tx := database.DB.Create(&actions)
 			if tx.Error != nil {
 				count -= 1
 				log.Printf("Error for block num: %d %v %v", actions.BlockNum, actions.Cursorid, tx.Error)
+				continue
 			}
-			fmt.Printf("Inserted Record with cursor id: %v , Block num: %v", actions.Cursorid, actions.BlockNum)
+			fmt.Printf("Inserted Record with cursor id: %v , Block num: %v \n", actions.Cursorid, actions.BlockNum)
 		}
 
 	}
