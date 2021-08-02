@@ -121,28 +121,30 @@ func StreamData() {
 	fmt.Println("Client------------------>", graphqlClient)
 
 	queryTemplate = `
-	subscription ($search: String!, $cursor: String) {
-		searchTransactionsForward(query: $search, limit: 0, cursor: $cursor,irreversibleOnly:true) {
+	subscription ($search: String!, $cursor: String, $limit: Int64) {
+		searchTransactionsForward(query: $search, limit: $limit, cursor: $cursor,irreversibleOnly:true) {
 		  undo
 		  cursor
 		  trace {
 			block {
-			  id
 			  num
+			  id
+			  confirmed
 			  timestamp
+			  previous
 			}
 			id
-      		status
+			status
 			matchingActions {
 			  account
 			  name
 			  json
+			  seq
 			  receiver
 			}
 		  }
 		}
-	  } 
-	  
+	  }
 	  `
 
 	database.DB.Select("cursorid", "block_num", "account", "action", "receiver", "inline_actions", "data_json", "timestamp").Last(&lastCursor)
@@ -201,8 +203,6 @@ func StreamData() {
 			}
 
 		}
-
-		time.Sleep(5 * time.Second)
 
 		cursor := gjson.Get(response.Data, "searchTransactionsForward.cursor").Str
 		undo := gjson.Get(response.Data, "searchTransactionsForward.undo").Bool()
