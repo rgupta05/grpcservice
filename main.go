@@ -115,6 +115,8 @@ func StreamData() {
 
 	fmt.Println("Connection:", connection)
 
+	defer connection.Close()
+
 	ctx := context.Background()
 	graphqlClient := graphql.NewGraphQLClient(connection)
 
@@ -125,6 +127,8 @@ func StreamData() {
 		searchTransactionsForward(query: $search, limit: $limit, cursor: $cursor,irreversibleOnly:true) {
 		  undo
 		  cursor
+		  isIrreversible
+		  irreversibleBlockNum
 		  trace {
 			block {
 			  num
@@ -145,6 +149,7 @@ func StreamData() {
 		  }
 		}
 	  }
+	  
 	  `
 
 	database.DB.Select("cursorid", "block_num", "account", "action", "receiver", "inline_actions", "data_json", "timestamp").Last(&lastCursor)
@@ -153,8 +158,8 @@ func StreamData() {
 	fmt.Println("LAST INSERTED BLOCK NUM ::::::::", lowBlockNum)
 	fmt.Println("LAST SEEN CURSOR  ID ::::::::", lastSeenCursor)
 
-	search := "receiver:hodldexeos11 -action:orasetrate"
-	cursor := lastSeenCursor
+	search := "receiver:eosio.token action:transfer -data.quantity:'0.0001 EOS'"
+	cursor := ""
 	fmt.Println(search)
 	low, _ := strconv.Atoi(lowBlockNum)
 	//limit, _ := strconv.Atoi(limitBlock)
@@ -216,6 +221,7 @@ func StreamData() {
 		len := gjson.Get(response.Data, "searchTransactionsForward.trace.matchingActions.#").Int()
 		blockid := gjson.Get(response.Data, "searchTransactionsForward.trace.block").Get("id")
 		traceid := gjson.Get(response.Data, "searchTransactionsForward.trace.id").Str
+		irreversible := gjson.Get(response.Data, "searchTransactionsForward.isIrreversible").Bool()
 
 		fmt.Println("Len:", len)
 
@@ -239,17 +245,20 @@ func StreamData() {
 		fmt.Println("STATUS:", status)
 		fmt.Println("BLOCK ID:", blockid)
 		fmt.Println("TRACE ID:", traceid)
+		fmt.Println("IRREVERSIBLE ID:", irreversible)
 		//	s.storage.StoreCursor(cursor)
 
 		actions := models.Cursor{
-			Cursorid:      cursor,
-			BlockNum:      block.Int(),
-			Timestamp:     timestamp.Time(),
-			Account:       account,
-			Action:        name,
-			Receiver:      receiver,
-			Data_json:     datatypes.JSON(primaryJson),
-			InlineActions: datatypes.JSON([]byte(inlineJson)),
+			Cursorid:       cursor,
+			BlockNum:       block.Int(),
+			Timestamp:      timestamp.Time(),
+			Account:        account,
+			Action:         name,
+			Receiver:       receiver,
+			Data_json:      datatypes.JSON(primaryJson),
+			InlineActions:  datatypes.JSON([]byte(inlineJson)),
+			IsIrreversible: irreversible,
+			InsertedTime:   time.Now(),
 		}
 
 		inlineJson = ""
