@@ -14,9 +14,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"reflect"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -38,6 +36,7 @@ var s Server
 type Server struct {
 	jwt         *JWT
 	oauth2Token *oauth2.Token
+	lastCursor  string
 }
 
 func main() {
@@ -80,8 +79,9 @@ func StreamData() {
 
 	var inlineJson = ""
 	var queryTemplate string
-	var lastCursor models.Cursor
+	//var lastCursor models.Cursor
 	var count = 0
+	var dbServer int64
 
 	//infinite recursive call to continue stream after stopping
 	defer StreamData()
@@ -152,18 +152,18 @@ func StreamData() {
 	  
 	  `
 
-	database.DB.Select("cursorid", "block_num", "account", "action", "receiver", "inline_actions", "data_json", "timestamp").Last(&lastCursor)
-	lowBlockNum := fmt.Sprint(lastCursor.BlockNum)
-	lastSeenCursor := lastCursor.Cursorid
-	fmt.Println("LAST INSERTED BLOCK NUM ::::::::", lowBlockNum)
+	//database.DB.Select("cursorid", "block_num", "account", "action", "receiver", "inline_actions", "data_json", "timestamp").Last(&lastCursor)
+	//lowBlockNum := fmt.Sprint(lastCursor.BlockNum)
+	lastSeenCursor := s.lastCursor
+	//	fmt.Println("LAST INSERTED BLOCK NUM ::::::::", lowBlockNum)
 	fmt.Println("LAST SEEN CURSOR  ID ::::::::", lastSeenCursor)
 
 	search := "receiver:eosio.token action:transfer -data.quantity:'0.0001 EOS'"
 	cursor := ""
 	fmt.Println(search)
-	low, _ := strconv.Atoi(lowBlockNum)
+	//low, _ := strconv.Atoi(lowBlockNum)
 	//limit, _ := strconv.Atoi(limitBlock)
-	vars := toVariable(search, cursor, int64(low), 0)
+	vars := toVariable(search, cursor, 0, 0)
 
 	executionClient, err := graphqlClient.Execute(ctx, &graphql.Request{Query: queryTemplate, Variables: vars})
 
@@ -262,16 +262,17 @@ func StreamData() {
 		}
 
 		inlineJson = ""
-
+		dbServer = actions.BlockNum % 3
 		fmt.Println(actions.InlineActions)
+		fmt.Println("DB SERVER NO:---------->", dbServer)
 		//insert into the database
-		equality := reflect.DeepEqual(lastCursor, actions)
-		fmt.Println("EQUALITY---------------------->", equality)
-		fmt.Println(lastCursor)
+		// equality := reflect.DeepEqual(lastCursor, actions)
+		// fmt.Println("EQUALITY---------------------->", equality)
+		// fmt.Println(lastCursor)
 		fmt.Println(actions)
 
 		if undo {
-			database.DB.Where("cursorid=?", actions.Cursorid).Delete(&actions)
+			database.DB[dbServer].Where("cursorid=?", actions.Cursorid).Delete(&actions)
 			fmt.Println("Deleted Record with cursor id: ", actions.Cursorid)
 			continue
 		}
@@ -282,13 +283,14 @@ func StreamData() {
 		// 	continue
 		// }
 		if actions.BlockNum != 0 && status == "EXECUTED" {
-			tx := database.DB.Create(&actions)
+			tx := database.DB[dbServer].Create(&actions)
 			if tx.Error != nil {
 				count -= 1
 				log.Printf("Error for block num: %d %v %v", actions.BlockNum, actions.Cursorid, tx.Error)
 				continue
 			}
 			fmt.Printf("Inserted Record with cursor id: %v , Block num: %v \n", actions.Cursorid, actions.BlockNum)
+			s.lastCursor = cursor
 		}
 
 	}
