@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -14,9 +13,13 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/tidwall/gjson"
@@ -43,14 +46,14 @@ func main() {
 	database.Connection()
 	StreamData()
 
-	// // trap sigterm or interupt and gracefully shutdown the server
-	// c := make(chan os.Signal, 1)
-	// signal.Notify(c, os.Interrupt)
-	// signal.Notify(c, syscall.SIGTERM)
+	// trap sigterm or interupt and gracefully shutdown the server
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	signal.Notify(c, syscall.SIGTERM)
 
-	// // Block until a signal is received.
-	// sig := <-c
-	// log.Println("Got signal:", sig)
+	// Block until a signal is received.
+	sig := <-c
+	log.Println("Got signal:", sig)
 
 }
 
@@ -64,23 +67,21 @@ func StreamData() {
 	//infinite recursive call to continue stream after stopping
 	//defer StreamData()
 
-	// authToken, err := RefreshToken()
-	// if err != nil {
-	// 	errResult := fmt.Errorf("run: %s", err)
-	// 	log.Println(errResult)
-	// }
+	authToken, err := RefreshToken()
+	if err != nil {
+		errResult := fmt.Errorf("run: %s", err)
+		log.Println(errResult)
+	}
 
 	s.oauth2Token = &oauth2.Token{
-		AccessToken: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiaHR0cHM6Ly9kZnVzZS5lb3NuYXRpb24uaW8vIl0sImV4cCI6MTYzOTIyMjM1MiwiaWF0IjoxNjM5MTM1OTUyLCJpc3MiOiJodHRwczovL2FwaS5kZnVzZS5lb3NuYXRpb24uaW8vdjEvIiwic3ViIjoidWlkOjIzMzI0MTIuZW9zbiIsImFwaV9rZXlfaWQiOiJkZWZhdWx0IiwicXVvdGEiOjEyMCwicmF0ZSI6MTAsIm5ldHdvcmtzIjpbeyJuYW1lIjoiZW9zIiwicXVvdGEiOjEyMCwicmF0ZSI6MTB9LHsibmFtZSI6IndheCIsInF1b3RhIjoxMjAsInJhdGUiOjEwfSx7Im5hbWUiOiJreWxpbiIsInF1b3RhIjoxMjAsInJhdGUiOjEwfSx7Im5hbWUiOiJqdW5nbGUiLCJxdW90YSI6MTIwLCJyYXRlIjoxMH0seyJuYW1lIjoid2F4dGVzdCIsInF1b3RhIjoxMjAsInJhdGUiOjEwfSx7Im5hbWUiOiJvcmUiLCJxdW90YSI6MTIwLCJyYXRlIjoxMH0seyJuYW1lIjoib3Jlc3RhZ2UiLCJxdW90YSI6MTIwLCJyYXRlIjoxMH0seyJuYW1lIjoidGVzdG5ldCIsInF1b3RhIjoxMjAsInJhdGUiOjEwfV19.msrTcMs9tkuSsieSEAMBEDaYnMeG3jVodDNgLsECkk8",
+		AccessToken: authToken.AccessToken,
 		TokenType:   "Bearer",
 	}
 
 	credential := oauth.NewOauthAccess(s.oauth2Token)
-	pool, _ := x509.SystemCertPool()
-	// error handling omitted
-	creds := credentials.NewClientTLSFromCert(pool, "")
+
 	opts := []grpc.DialOption{
-		grpc.WithTransportCredentials(creds),
+		grpc.WithTransportCredentials(credentials.NewClientTLSFromCert(nil, "")),
 		grpc.WithPerRPCCredentials(credential),
 	}
 
@@ -139,9 +140,9 @@ func StreamData() {
 	search := "receiver:xegkypcmeirg"
 	cursor := "Tb9oi-JPt8HkWy0t2LjRJ_e7JZY6DlNsVArhIBtAgoij9CeQ3sz0AjQ="
 	fmt.Println(search)
-	//low, _ := strconv.Atoi(lowBlockNum)
+	low, _ := strconv.Atoi(lowBlockNum)
 	//limit, _ := strconv.Atoi(limitBlock)
-	vars := toVariable(search, cursor, 0)
+	vars := toVariable(search, cursor, int64(low), 0)
 
 	executionClient, err := graphqlClient.Execute(ctx, &graphql.Request{Query: queryTemplate, Variables: vars})
 
@@ -398,7 +399,7 @@ func ParseJwt(token string) (*JWT, error) {
 
 }
 
-func toVariable(query string, cursor string, limit int64) *structpb.Struct {
+func toVariable(query string, cursor string, lowBlockNum int64, limit int64) *structpb.Struct {
 	return &structpb.Struct{
 		Fields: map[string]*structpb.Value{
 			"search": {
@@ -409,6 +410,11 @@ func toVariable(query string, cursor string, limit int64) *structpb.Struct {
 			"cursor": {
 				Kind: &structpb.Value_StringValue{
 					StringValue: cursor,
+				},
+			},
+			"lowBlockNum": {
+				Kind: &structpb.Value_NumberValue{
+					NumberValue: float64(lowBlockNum),
 				},
 			},
 			"limit": {
