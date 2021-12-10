@@ -1,6 +1,7 @@
 package database
 
 import (
+	"grpcservice/models"
 	"log"
 
 	"gorm.io/driver/mysql"
@@ -11,7 +12,7 @@ var DB *gorm.DB
 
 func Connection() {
 
-	connection, err := gorm.Open(mysql.Open("awsuser:Current-Root-Password@tcp(database-2.cglzxfyim9pj.us-east-2.rds.amazonaws.com)/ambassadorservice?parseTime=true"), &gorm.Config{
+	connection, err := gorm.Open(mysql.Open("admin:Ghost12dd@tcp(database-3.cglzxfyim9pj.us-east-2.rds.amazonaws.com)/eos?parseTime=true"), &gorm.Config{
 		SkipDefaultTransaction: true,
 	})
 
@@ -23,6 +24,6 @@ func Connection() {
 
 	DB = connection
 
-	//connection.AutoMigrate(&models.Cursor{})
+	connection.AutoMigrate(&models.Cursor{})
 
 }

@@ -14,14 +14,15 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
 	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
-	"github.com/gorilla/handlers"
-	"github.com/gorilla/mux"
 	"github.com/tidwall/gjson"
 	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
@@ -42,38 +43,19 @@ type Server struct {
 
 func main() {
 
+	log.Println(" Starting GRPC service for EOS logs...")
 	database.Connection()
+	StreamData()
 
-	router := mux.NewRouter().StrictSlash(true)
+	// trap sigterm or interupt and gracefully shutdown the server
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	signal.Notify(c, syscall.SIGTERM)
 
-	router.HandleFunc("/continue-stream", index).Methods("GET")
+	// Block until a signal is received.
+	sig := <-c
+	log.Println("Got signal:", sig)
 
-	headersOk := handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "application/json;charset=UTF-8"})
-	originsOk := handlers.AllowedOrigins([]string{"*"})
-	methodsOk := handlers.AllowedMethods([]string{"GET", "HEAD", "POST", "PUT", "OPTIONS"})
-
-	fmt.Println("Listening on :80...")
-	srv := &http.Server{
-		Handler:      handlers.CORS(originsOk, headersOk, methodsOk)(router),
-		Addr:         ":80",
-		WriteTimeout: 300 * time.Second,
-		ReadTimeout:  300 * time.Second,
-	}
-
-	err := srv.ListenAndServe()
-	if err != nil {
-		fmt.Println("Error launching server: ", err)
-	}
-}
-
-func index(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	resp := models.Response{
-		Code:    200,
-		Message: "Stream Started",
-	}
-	json.NewEncoder(w).Encode(resp)
-	go StreamData()
 }
 
 func StreamData() {
@@ -106,7 +88,7 @@ func StreamData() {
 		grpc.WithPerRPCCredentials(credential),
 	}
 
-	connection, err := grpc.Dial("eos.dfuse.eosnation.io:9000", opts...)
+	connection, err := grpc.Dial("testnet.eos.dfuse.io:443", opts...)
 	if err != nil {
 		errResult := fmt.Errorf("run: grapheos connection connection: %s", err)
 		log.Println(errResult)
@@ -158,7 +140,7 @@ func StreamData() {
 	fmt.Println("LAST INSERTED BLOCK NUM ::::::::", lowBlockNum)
 	fmt.Println("LAST SEEN CURSOR  ID ::::::::", lastSeenCursor)
 
-	search := "receiver:eosio.token action:transfer -data.quantity:'0.0001 EOS'"
+	search := "receiver:xegkypcmeirg"
 	cursor := ""
 	fmt.Println(search)
 	low, _ := strconv.Atoi(lowBlockNum)
