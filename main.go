@@ -7,9 +7,12 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"grpcservice/database"
+	"grpcservice/models"
 	"grpcservice/pb/graphql"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"regexp"
 	"strings"
@@ -21,6 +24,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/oauth"
 	"google.golang.org/protobuf/types/known/structpb"
+	"gorm.io/datatypes"
 )
 
 type JWT map[string]interface{}
@@ -32,7 +36,11 @@ type Server struct {
 
 func main() {
 
+	log.Println(" Starting GRPC service for EOS logs...")
+	database.Connection()
+
 	var s Server
+	var inlineJson = ""
 
 	authToken, err := s.RefreshToken()
 	if err != nil {
@@ -60,34 +68,36 @@ func main() {
 
 	fmt.Println("Client------------------>", graphqlClient)
 	queryTemplate := `
-	query ($search: String!, $cursor: String, $low: Int64, $high: Int64) {
-		searchTransactionsForward(query: $search, lowBlockNum: $low, highBlockNum: $high, limit: 10, cursor: $cursor) {
-		  results {
-			undo
-			cursor
-			trace {
-			  block {
-				num
-				id
-				confirmed
-				timestamp
-				previous
-			  }
+	subscription ($search: String!, $cursor: String, $limit: Int64) {
+		searchTransactionsForward(query: $search, limit: $limit, cursor: $cursor,irreversibleOnly:true) {
+		  undo
+		  cursor
+		  isIrreversible
+		  irreversibleBlockNum
+		  trace {
+			block {
+			  num
 			  id
-			  matchingActions {
-				account
-				name
-				json
-				seq
-				receiver
-			  }
+			  confirmed
+			  timestamp
+			  previous
+			}
+			id
+			status
+			matchingActions {
+			  account
+			  name
+			  json
+			  seq
+			  receiver
 			}
 		  }
 		}
 	  }
 `
-	search := "receiver:eosio action:newaccount"
-	vars := toVariable(search, "", 10)
+	search := "receiver:xegkypcmeirg"
+	cursor := "Tb9oi-JPt8HkWy0t2LjRJ_e7JZY6DlNsVArhIBtAgoij9CeQ3sz0AjQ="
+	vars := toVariable(search, cursor, 0)
 
 	executionClient, err := graphqlClient.Execute(ctx, &graphql.Request{Query: queryTemplate, Variables: vars})
 	if err != nil {
@@ -121,8 +131,85 @@ func main() {
 		}
 
 		cursor := gjson.Get(response.Data, "searchTransactionsForward.cursor").Str
+		undo := gjson.Get(response.Data, "searchTransactionsForward.undo").Bool()
+		block := gjson.Get(response.Data, "searchTransactionsForward.trace.block").Get("num")
+		timestamp := gjson.Get(response.Data, "searchTransactionsForward.trace.block").Get("timestamp")
+		account := gjson.Get(response.Data, "searchTransactionsForward.trace.matchingActions.0.account").Str
+		name := gjson.Get(response.Data, "searchTransactionsForward.trace.matchingActions.0.name").Str
+		receiver := gjson.Get(response.Data, "searchTransactionsForward.trace.matchingActions.0.receiver").Str
+		primaryJson := gjson.Get(response.Data, "searchTransactionsForward.trace.matchingActions.0").Get("json").Raw
+		status := gjson.Get(response.Data, "searchTransactionsForward.trace.status").Str
+		len := gjson.Get(response.Data, "searchTransactionsForward.trace.matchingActions.#").Int()
+		blockid := gjson.Get(response.Data, "searchTransactionsForward.trace.block").Get("id")
+		traceid := gjson.Get(response.Data, "searchTransactionsForward.trace.id").Str
+		irreversible := gjson.Get(response.Data, "searchTransactionsForward.isIrreversible").Bool()
+
+		fmt.Println("Len:", len)
+
+		for i := 1; i <= int(len-1); i++ {
+			inlineaction := gjson.Get(response.Data, "searchTransactionsForward.trace.matchingActions."+fmt.Sprint(i)).Raw
+			if i == 1 {
+				inlineJson = "[" + inlineJson + inlineaction
+			} else {
+				inlineJson = inlineJson + "," + inlineaction
+			}
+			if i == int(len-1) {
+				inlineJson = inlineJson + "]"
+			}
+		}
 		fmt.Println("Cursor:", cursor)
-		//	s.storage.StoreCursor(cursor)
+		fmt.Println("trace:", block)
+		fmt.Println("account:", account)
+		fmt.Println("name:", name)
+		fmt.Println("primary json:", primaryJson)
+		fmt.Println("UNDO:", undo)
+		fmt.Println("STATUS:", status)
+		fmt.Println("BLOCK ID:", blockid)
+		fmt.Println("TRACE ID:", traceid)
+		fmt.Println("IRREVERSIBLE ID:", irreversible)
+		//s.storage.StoreCursor(cursor)
+
+		actions := models.Cursor{
+			Cursorid:       cursor,
+			BlockNum:       block.Int(),
+			Timestamp:      timestamp.Time(),
+			Account:        account,
+			Action:         name,
+			Receiver:       receiver,
+			Data_json:      datatypes.JSON(primaryJson),
+			InlineActions:  datatypes.JSON([]byte(inlineJson)),
+			IsIrreversible: irreversible,
+			InsertedTime:   time.Now(),
+		}
+
+		inlineJson = ""
+
+		fmt.Println(actions.InlineActions)
+		// //insert into the database
+		// equality := reflect.DeepEqual(lastCursor, actions)
+		// fmt.Println("EQUALITY---------------------->", equality)
+		// fmt.Println(lastCursor)
+		// fmt.Println(actions)
+
+		if undo {
+			database.DB.Where("cursorid=?", actions.Cursorid).Delete(&actions)
+			fmt.Println("Deleted Record with cursor id: ", actions.Cursorid)
+			continue
+		}
+
+		// if count == 1 && !reflect.DeepEqual(lastCursor, actions) && lastCursor.Cursorid != "" {
+		// 	database.DB.Model(&actions).Where("block_num=?", actions.BlockNum).Updates(map[string]interface{}{"cursorid": actions.Cursorid, "account": actions.Account, "action": actions.Action, "receiver": actions.Receiver, "inline_actions": actions.InlineActions, "data_json": actions.Data_json})
+		// 	fmt.Printf("Updated Record with cursor id: %v , Block num: %v", actions.Cursorid, actions.BlockNum)
+		// 	continue
+		// }
+		if actions.BlockNum != 0 && status == "EXECUTED" {
+			tx := database.DB.Create(&actions)
+			if tx.Error != nil {
+				log.Printf("Error for block num: %d %v %v", actions.BlockNum, actions.Cursorid, tx.Error)
+				continue
+			}
+			fmt.Printf("Inserted Record with cursor id: %v , Block num: %v \n", actions.Cursorid, actions.BlockNum)
+		}
 
 	}
 
@@ -252,7 +339,7 @@ func ParseJwt(token string) (*JWT, error) {
 
 }
 
-func toVariable(query string, cursor string, lowBlockNum int32) *structpb.Struct {
+func toVariable(query string, cursor string, limit int64) *structpb.Struct {
 	return &structpb.Struct{
 		Fields: map[string]*structpb.Value{
 			"search": {
@@ -265,9 +352,9 @@ func toVariable(query string, cursor string, lowBlockNum int32) *structpb.Struct
 					StringValue: cursor,
 				},
 			},
-			"lowBlockNum": {
+			"limit": {
 				Kind: &structpb.Value_NumberValue{
-					NumberValue: float64(lowBlockNum),
+					NumberValue: float64(limit),
 				},
 			},
 		},
